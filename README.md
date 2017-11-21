@@ -1,5 +1,5 @@
 # PatientNet: a shiny web application for visualizing patient-specific cancer vulnerability networks. 
-<img src="www/logo.png" align="right" width="376" height="288" /> 
+<img src="www/logo.png" align="right" width="565" height="432" /> 
 
 ## Introduction
 PatientNet is part of drug combination prediction and testing (DCPT) platform developed by computational systems medicine group at FIMM, University of Helsinki (<https://www.fimm.fi/en/research/groups/aittokallio>). PatientNet constructs and visualizes patient-specific cancer vulnerability networks based on the patient-specific combination predictions. For each patient, the pathway cross-talk network is constructed by establishing the shortest paths that connect the selective drug targets of the predicted combinations to the patient-specific genetic aberrations and molecular changes, including mutated or dysregulated genes, through a comprehensive cancer signaling network from two large-scale studies[1,2]. Users can also use PatientNet service at <https://pantientnet.fimm.fi>. 
