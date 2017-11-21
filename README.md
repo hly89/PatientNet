@@ -32,4 +32,4 @@ If you have any problems in using ComboPred, please contace **Liye He** (liye.he
 ## References
 
 1. Zaman N, Li L, Jaramillo Maria L, Sun Z, Tibiche C, Banville M, et al. Signaling Network Assessment of Mutations and Copy Number Variations Predict Breast Cancer Subtype-Specific Drug Targets. Cell Reports 2013;5:216-23.
-2. Zaman N, Li L, Jaramillo Maria L, Sun Z, Tibiche C, Banville M, et al. Signaling Network Assessment of Mutations and Copy Number Variations Predict Breast Cancer Subtype-Specific Drug Targets. Cell Reports 2013;5:216-23.
+2. Kirouac DC, Saez-Rodriguez J, Swantek J, Burke JM, Lauffenburger DA, Sorger PK. Creating and analyzing pathway and protein interaction compendia for modelling signal transduction networks. BMC Syst Biol 2012;6:29.
