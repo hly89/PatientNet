@@ -29,6 +29,8 @@ If you have any problems in using ComboPred, please contace **Liye He** (liye.he
 
 ## Copyright & License
 
+Code released under the MIT license.
+
 ## References
 
 1. Zaman N, Li L, Jaramillo Maria L, Sun Z, Tibiche C, Banville M, et al. Signaling Network Assessment of Mutations and Copy Number Variations Predict Breast Cancer Subtype-Specific Drug Targets. Cell Reports 2013;5:216-23.
