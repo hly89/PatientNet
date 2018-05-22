@@ -1,4 +1,4 @@
-.libPaths("/home/shiny/libs")
+#.libPaths("/home/shiny/libs")
 library(openxlsx)
 library(visNetwork)
 library(igraph)
