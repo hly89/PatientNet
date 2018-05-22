@@ -1,10 +1,13 @@
+.libPaths("/home/shiny/libs")
 library(openxlsx)
 library(visNetwork)
 library(igraph)
-library(biomaRt)
-source("NetworkPipeline.R")
+#library(biomaRt)
+library(shinyjs)
+#source("NetworkPipeline.R")
 
 shinyServer (function(input, output, session) {
+    
   loadZaman <- reactiveFileReader(10000,session, filePath = "Zaman.rda",
                                   load, envir = .GlobalEnv)
   
@@ -22,7 +25,11 @@ shinyServer (function(input, output, session) {
                                 showexp = FALSE,
                                 shownet = FALSE,
                                 unmatch = NULL, 
-                                mutmatched = NULL)
+                                mutmatched = NULL,
+                                tour = FALSE,
+                                nets = NULL,
+                                netstart = FALSE,
+                                noticeid= NULL)
   
   # use reactive expression for saving the uploaded file
   uploadDT <- reactive({
@@ -42,17 +49,77 @@ shinyServer (function(input, output, session) {
   })
   
   uploadFile <- reactive({
+    # if(global.data$restfile){
+    #   return(NULL)
+    # } else {
+    #   input$dataAll
+    # }
     input$dataAll
   })
   
   
-  
+  closeAll <- compiler::cmpfun(function(){
+    global.data$tour <- FALSE
+    global.data$showtab <- FALSE
+    global.data$dts <- NULL
+    global.data$dss <- NULL
+    global.data$exps <- NULL
+    global.data$muts <- NULL
+    global.data$unmatch <- NULL
+    global.data$nets <- NULL
+    global.data$shownet <- FALSE
+    #global.data$restfile <- TRUE
+    shinyjs::runjs(paste0('$("#dataAll_progress").css("visibility", "hidden"); $(".form-control").val("");'));
+    shinyjs::runjs("$('#dataAll').val('abc').clone(true);")
+    shinyjs::reset("testing")
+    print(uploadFile())
+    #shinyjs::runjs("$('#HowToUse').modal('hide');$('#Save_full_').modal('hide');");
+  })
   
   ### Tour ###
   
-  observeEvent(input$typetour, updateCheckboxInput(session, "separate", value = 0))
+  observeEvent(input$typetour, 
+               {
+                 global.data$tour <- TRUE
+                 updateCheckboxInput(session, "separate", value = 0)
+               }
+              )
   
-  observeEvent(inpt$showdata, )
+  observeEvent(input$endtour,{
+    closeAll();
+    
+  })
+  
+  observeEvent(input$Restart, 
+               {
+                 updateCheckboxInput(session, "separate", value = 0);
+                 closeAll();
+                 runjs('$("#wraptour").show();')
+                 #uploadFile();
+                 #global.data$restfile <- FALSE
+                 })
+  
+  
+  
+  observeEvent(input$datatab, {
+    name_ = "_example.xlsx"
+    
+    shinyjs::runjs(paste0('$("#dataAll_progress").html(\'<div class="progress-bar" style="width: 100%;">Upload complete</div>\').css("visibility", "visible");
+                          $(".form-control").val("', name_,'");'))
+    global.data$showtab <- TRUE
+    loadexp()
+    global.data$dts <- dts
+    global.data$dss <- dss
+    global.data$exps <- exps
+    global.data$muts <- muts
+    global.data$unmatch <- unmatched
+    global.data$nets <- nets
+  })
+  
+  observeEvent(input$loadnet, {
+    global.data$shownet <- TRUE
+  })
+
   
   
   output$tabs <- renderUI({
@@ -67,9 +134,26 @@ shinyServer (function(input, output, session) {
     }
   })
   
-  observeEvent(
-    !global.data$showtab, shinyjs::disable("nets")
+  observe({
+    
+    if(!global.data$showtab) shinyjs::disable("Nets")
+    else shinyjs::enable("Nets")
+  }
+    
   )
+  
+  observe({
+      if(global.data$netstart){
+          global.data$noticeid<-showNotification(paste("Patient specific network construction in progress..."), duration = NULL)
+      }else {
+          if(length(global.data$noticeid)>=1) {
+              removeNotification(global.data$noticeid[1])
+              global.data$noticeid <- global.data$noticeid[-1]
+              
+          }
+      }
+  })
+  
   
   output$btnNet <- renderUI({
     if(input$separate==FALSE & global.data$showtab){
@@ -77,21 +161,20 @@ shinyServer (function(input, output, session) {
     }
   })
   
-  observeEvent(input$nets, {
+  observeEvent(input$Nets, {
     loadZaman()
     global.data$shownet <- TRUE
-    ensembl <- useMart("ensembl",dataset="hsapiens_gene_ensembl")
-    idmatch <- getBM(attributes=c('hgnc_symbol', 'entrezgene'), 
-                     filters = 'hgnc_symbol', 
-                     values = global.data$muts, 
-                     mart = ensembl)
-    m <- match(idmatch$entrezgene, V(Zaman)$EntrezID)
-    gene.matched <- idmatch[which(!is.na(m)), 1] 
-    global.data$unmatch <- setdiff(global.data$muts, gene.matched)
+    #ensembl <- useMart("ensembl",dataset="hsapiens_gene_ensembl")
+    #idmatch <- getBM(attributes=c('hgnc_symbol', 'entrezgene'), 
+                     #filters = 'hgnc_symbol', 
+                     #values = global.data$muts, 
+                     #mart = ensembl)
+    #m <- match(idmatch$entrezgene, V(Zaman)$EntrezID)
+    m <- match(global.data$muts[, 1], V(Zaman)$Symbol)
+    gene.matched <- global.data$muts[which(!is.na(m)), 1] 
+    global.data$unmatch <- setdiff(global.data$muts[,1], gene.matched)
     global.data$mutmatched <- gene.matched
-    if(!is.null(global.data$unmatch)) {
-      global.data$unmatch <- global.data$unmatch[, 1]
-    } 
+
     #global.data$unmatch <- setdiff(global.data$muts, global.data$muts)
     
   })
@@ -99,6 +182,20 @@ shinyServer (function(input, output, session) {
   #observeEvent(input$unmatchbtn, {
     
   #})
+  
+  output$loadExData_small <- downloadHandler(
+    filename = function(){ paste0("test.xlsx") },
+    content = function(file){ file.copy("test.xlsx", file)},
+    contentType = NULL
+  )
+  
+  output$Save <- downloadHandler(
+    filename = function(){ paste0("test.html") },
+    content = function(file){ file.copy("test.html", file)},
+    contentType = NULL
+  )
+  
+  
   
   
   output$renderdt <- reactive({
@@ -163,9 +260,11 @@ shinyServer (function(input, output, session) {
         
       }
     }
-
+    
     if(input$separate==FALSE & global.data$showtab){
+      runjs('$("#wraptour").hide();');
       fluidRow(
+        tags$div(id="showdata"),
         box(title = "Input Data", solidHeader = TRUE, status = "primary", width = 12, 
             collapsible = TRUE,
             tabsetPanel(type = "tabs",
@@ -173,28 +272,8 @@ shinyServer (function(input, output, session) {
                         tabPanel("Drug response", dataTableOutput("displaydss")),
                         tabPanel("Mutation", dataTableOutput("displaymut")),
                         tabPanel("Gene expression", dataTableOutput("displaygene.exp"))
-            )),
-        if(global.data$shownet) {
-          box(title = "Patient Network", solidHeader = TRUE, status = "primary", width = 12,
-              collapsible = TRUE,
-              fluidRow(
-                infoBox(
-                  "Unmatched mutations", length(global.data$unmatch), 
-                  actionLink("unmatchbtn", "Check unmatched mutations"),
-                  icon = icon("close"),
-                  color = "red"
-                )
-              ),
-              fluidRow(
-                column(width = 3, imageOutput("extraLegend")),
-                column(width = 9, visNetworkOutput("network"))
-              )
-              )
-          
-        },
-        bsModal("unmatchmodel", "Unmatched mutations", "unmatchbtn",
-                size = "large",
-                dataTableOutput("unmatch"))
+            ))
+        
       )
 
          
@@ -215,6 +294,50 @@ shinyServer (function(input, output, session) {
               ))
         )
       }
+      
+    }
+    
+    
+    
+  })
+  
+  
+  output$showNetwork <- renderUI({
+    
+    if(global.data$shownet) {
+        global.data$netstart <- TRUE
+      fluidRow(
+        box(title = "Patient Network", solidHeader = TRUE, status = "primary", width = 12,
+            collapsible = TRUE,
+            fluidRow(
+              infoBox(
+                "Unmatched mutations", length(global.data$unmatch), 
+                actionLink("unmatchbtn", "Check unmatched mutations"),
+                icon = icon("close"),
+                color = "red"
+              )
+            ),
+            fluidRow(
+              column(width = 12, imageOutput("extraLegend", height = "80px"))
+            ),
+            fluidRow(
+              #column(width = 3, imageOutput("extraLegend")),
+              if(global.data$tour){
+                column(width = 12, visNetworkOutput("nettour", height = "500px"))
+              } else {
+                column(width = 12, visNetworkOutput("network", height = "500px"))
+              }
+              
+            )
+      ), 
+      
+      bsModal("unmatchmodel", "Unmatched mutations", "unmatchbtn",
+                 size = "large",
+                 dataTableOutput("unmatch"))
+      
+          
+          
+      )
       
     }
     
@@ -309,127 +432,102 @@ shinyServer (function(input, output, session) {
     max.exp <- max(V(subnet)$exp, na.rm = TRUE)
     min.exp <- min(V(subnet)$exp, na.rm = TRUE)
     V(subnet)$expclass <- NA
-    # positive gene expression
-    id.pos <- which(V(subnet)$exp >= 0)
-    breaks.tmp <- c(0, max.exp/6, max.exp/3,max.exp/2,
-                    max.exp/6*4, max.exp/6*5, max.exp)
-    V(subnet)$expclass[id.pos] <- as.numeric(cut(V(subnet)$exp[id.pos], 
-                                                 breaks = breaks.tmp, 
-                                                 include.lowest = TRUE))
-    # negative gene expression
-    if(min.exp<0){
-      id.neg <- which(V(subnet)$exp < 0)
-      breaks.tmp <- c(0, min.exp/6, min.exp/3, min.exp/2,
-                      min.exp/6*4, min.exp/6*5, min.exp)
-      V(subnet)$expclass[id.neg] <- as.numeric(cut(V(subnet)$exp[id.neg], 
-                                                   breaks = breaks.tmp, 
-                                                   include.lowest = TRUE))
+    
+    # only positive gene expression
+    if(min.exp > 0) {
+        # positive gene expression
+        id.pos <- which(V(subnet)$exp >= 0)
+        breaks.tmp <- c(0, max.exp/6, max.exp/3,max.exp/2,
+        max.exp/6*4, max.exp/6*5, max.exp)
+        V(subnet)$expclass[id.pos] <- as.numeric(cut(V(subnet)$exp[id.pos],
+        breaks = breaks.tmp,
+        include.lowest = TRUE))
+        # no negative gene expression
+        id.neg <- NULL
     }
     
-    print(V(subnet)$exp)
-    print(V(subnet)$expclass)
+    # only negative gene expression
+    if(max.exp < 0){
+        id.neg <- which(V(subnet)$exp < 0)
+        breaks.tmp <- c(0, min.exp/6, min.exp/3, min.exp/2,
+        min.exp/6*4, min.exp/6*5, min.exp)
+        V(subnet)$expclass[id.neg] <- as.numeric(cut(V(subnet)$exp[id.neg],
+        breaks = breaks.tmp,
+        include.lowest = TRUE))
+        # no positive gene expression
+        id.pos <- NULL
+    }
+    
+    if(max.exp > 0 & min.exp < 0){
+        # positive gene expression
+        id.pos <- which(V(subnet)$exp >= 0)
+        breaks.tmp <- c(0, max.exp/6, max.exp/3,max.exp/2,
+        max.exp/6*4, max.exp/6*5, max.exp)
+        V(subnet)$expclass[id.pos] <- as.numeric(cut(V(subnet)$exp[id.pos],
+        breaks = breaks.tmp,
+        include.lowest = TRUE))
+        id.neg <- which(V(subnet)$exp < 0)
+        breaks.tmp <- c(0, min.exp/6, min.exp/3, min.exp/2,
+        min.exp/6*4, min.exp/6*5, min.exp)
+        V(subnet)$expclass[id.neg] <- as.numeric(cut(V(subnet)$exp[id.neg],
+        breaks = breaks.tmp,
+        include.lowest = TRUE))
+        
+    }
+    
+    
     subnet.Vis <- toVisNetworkData(subnet)
     
     # node shape
     subnet.Vis$nodes$shape <- "image"
     subnet.Vis$nodes$image <- "/kinase.png"
+    subnet.Vis$nodes$muts <- FALSE
+    mut.node <- match(muts, subnet.Vis$nodes$label)
+    subnet.Vis$nodes$muts[mut.node] <- TRUE
+    id.mut <- which(subnet.Vis$nodes$muts == TRUE)
     
     # drug node
     d.node <- match(drugs, subnet.Vis$nodes$label)
     subnet.Vis$nodes$image[d.node] <- "/drug.png"
-    # type "other"
-    other.node <- which(subnet.Vis$nodes$type == "other")
-    other.pos <- which(other.node %in% id.pos)
-    if(length(other.pos)!=0) subnet.Vis$nodes$image[other.node[other.pos]] <- 
-      paste("/other/other1.", subnet.Vis$nodes$expclass[other.node[other.pos]],".png", sep = "")
     
-    other.neg <- which(other.node %in% id.neg)
-    if(length(other.neg)!=0) subnet.Vis$nodes$image[other.node[other.neg]] <- 
-      paste("/other/other2.", subnet.Vis$nodes$expclass[other.node[other.neg]],".png", sep = "")
+    # type "other"
+    subnet.Vis <- addimg("other", id.mut, id.pos, id.neg, "/other/other1.",
+    "/other/other2.", subnet.Vis)
     
     # type "cytokine"
-    cytokine.node <- which(subnet.Vis$nodes$type == "cytokine")
-    cytokine.pos <- which(cytokine.node %in% id.pos)
-    if(length(cytokine.pos)!=0) subnet.Vis$nodes$image[cytokine.node[cytokine.pos]] <- 
-      paste("/cytokine/cytokine1.", subnet.Vis$nodes$expclass[cytokine.node[cytokine.pos]],".png", sep = "")
-    
-    cytokine.neg <- which(cytokine.node %in% id.neg)
-    if(length(cytokine.neg)!=0) subnet.Vis$nodes$image[cytokine.node[cytokine.neg]] <- 
-      paste("/cytokine/cytokine2.", subnet.Vis$nodes$expclass[cytokine.node[cytokine.neg]],".png", sep = "")
+    subnet.Vis <- addimg("cytokine", id.mut, id.pos, id.neg, "/cytokine/cytokine1.",
+    "/cytokine/cytokine2.", subnet.Vis)
     
     # type "growth factor"
-    gf.node <- which(subnet.Vis$nodes$type == "growth factor")
-    gf.pos <- which(gf.node %in% id.pos)
-    if(length(gf.pos)!=0) subnet.Vis$nodes$image[gf.node[gf.pos]] <- 
-      paste("/cytokine/cytokine1.", subnet.Vis$nodes$expclass[gf.node[gf.pos]],".png", sep = "")
+    subnet.Vis <- addimg("growth factor", id.mut, id.pos, id.neg, "/cytokine/cytokine1.",
+    "/cytokine/cytokine2.", subnet.Vis)
     
-    gf.neg <- which(gf.node %in% id.neg)
-    if(length(gf.neg)!=0) subnet.Vis$nodes$image[gf.node[gf.neg]] <- 
-      paste("/cytokine/cytokine2.", subnet.Vis$nodes$expclass[gf.node[gf.neg]],".png", sep = "")
     
     # type "enzyme"
-    enzyme.node <- which(subnet.Vis$nodes$type == "enzyme")
-    enzyme.pos <- which(enzyme.node %in% id.pos)
-    if(length(enzyme.pos)!=0) subnet.Vis$nodes$image[enzyme.node[enzyme.pos]] <- 
-      paste("/enzyme/enzyme1.", subnet.Vis$nodes$expclass[enzyme.node[enzyme.pos]],".png", sep = "")
+    subnet.Vis <- addimg("enzyme", id.mut, id.pos, id.neg, "/enzyme/enzyme1.",
+    "/enzyme/enzyme2.", subnet.Vis)
     
-    enzyme.neg <- which(enzyme.node %in% id.neg)
-    if(length(enzyme.neg)!=0) subnet.Vis$nodes$image[enzyme.node[enzyme.neg]] <- 
-      paste("/enzyme/enzyme2.", subnet.Vis$nodes$expclass[enzyme.node[enzyme.neg]],".png", sep = "")
     
     # type "transcription regulator"
-    tr.node <- which(subnet.Vis$nodes$type == "transcription regulator")
-    tr.pos <- which(tr.node %in% id.pos)
-    if(length(tr.pos)!=0) subnet.Vis$nodes$image[tr.node[tr.pos]] <- 
-      paste("/tr/tr1.", subnet.Vis$nodes$expclass[tr.node[tr.pos]],".png", sep = "")
-    
-    tr.neg <- which(tr.node %in% id.neg)
-    if(length(tr.neg)!=0) subnet.Vis$nodes$image[tr.node[tr.neg]] <- 
-      paste("/tr/tr2.", subnet.Vis$nodes$expclass[tr.node[tr.neg]],".png", sep = "")
+    subnet.Vis <- addimg("transcription regulator", id.mut, id.pos, id.neg, "/tr/tr1.",
+    "/tr/tr2.", subnet.Vis)
     
     # type "transporter"
-    transporter.node <- which(subnet.Vis$nodes$type == "transporter")
-    transporter.pos <- which(transporter.node %in% id.pos)
-    if(length(transporter.pos)!=0) subnet.Vis$nodes$image[transporter.node[transporter.pos]] <- 
-      paste("/transporter/transporter1.", subnet.Vis$nodes$expclass[transporter.node[transporter.pos]],".png", sep = "")
-    
-    transporter.neg <- which(transporter.node %in% id.neg)
-    if(length(transporter.neg)!=0) subnet.Vis$nodes$image[transporter.node[transporter.neg]] <- 
-      paste("/transporter/transporter2.", subnet.Vis$nodes$expclass[transporter.node[transporter.neg]],".png", sep = "")
-    
+    subnet.Vis <- addimg("transporter", id.mut, id.pos, id.neg, "/transporter/transporter1.",
+    "/transporter/transporter2.", subnet.Vis)
     
     # type "kinase"
-    kinase.node <- which(subnet.Vis$nodes$type == "kinase")
-    kinase.pos <- which(kinase.node %in% id.pos)
-    if(length(kinase.pos)!=0) subnet.Vis$nodes$image[kinase.node[kinase.pos]] <- 
-      paste("/kinase/kinase1.", subnet.Vis$nodes$expclass[kinase.node[kinase.pos]],".png", sep = "")
-    
-    kinase.neg <- which(kinase.node %in% id.neg)
-    if(length(kinase.neg)!=0) subnet.Vis$nodes$image[kinase.node[kinase.neg]] <- 
-      paste("/kinase/kinase2.", subnet.Vis$nodes$expclass[kinase.node[kinase.neg]],".png", sep = "")
+    subnet.Vis <- addimg("kinase", id.mut, id.pos, id.neg, "/kinase/kinase1.",
+    "/kinase/kinase2.", subnet.Vis)
     
     # type "ligand-dependent nuclear receptor"
-    ligand.node <- which(subnet.Vis$nodes$type == "ligand-dependent nuclear receptor")
-    ligand.pos <- which(ligand.node %in% id.pos)
-    if(length(ligand.pos)!=0) subnet.Vis$nodes$image[ligand.node[ligand.pos]] <- 
-      paste("/ligand/ligand1.", subnet.Vis$nodes$expclass[ligand.node[ligand.pos]],".png", sep = "")
-    
-    ligand.neg <- which(ligand.node %in% id.neg)
-    if(length(ligand.neg)!=0) subnet.Vis$nodes$image[ligand.node[ligand.neg]] <- 
-      paste("/ligand/ligand2.", subnet.Vis$nodes$expclass[ligand.node[ligand.neg]],".png", sep = "")
-    
+    subnet.Vis <- addimg("ligand-dependent nuclear receptor", id.mut, id.pos, id.neg, "/ligand/ligand1.",
+    "/ligand/ligand2.", subnet.Vis)
     
     # type "Transmembrane receptor"
-    mr.node <- which(subnet.Vis$nodes$type == "transmembrane receptor")
-    mr.pos <- which(mr.node %in% id.pos)
-    if(length(mr.pos)!=0) subnet.Vis$nodes$image[mr.node[mr.pos]] <- 
-      paste("/mr/mr1.", subnet.Vis$nodes$expclass[mr.node[mr.pos]],".png", sep = "")
-    
-    mr.neg <- which(mr.node %in% id.neg)
-    if(length(mr.neg)!=0) subnet.Vis$nodes$image[mr.node[mr.neg]] <- 
-      paste("/mr/mr2.", subnet.Vis$nodes$expclass[mr.node[mr.neg]],".png", sep = "")
-    
-    
+    subnet.Vis <- addimg("transmembrane receptor", id.mut, id.pos, id.neg, "/mr/mr1.",
+    "/mr/mr2.", subnet.Vis)
+    save(subnet.Vis, file="subnet.Vis.rda")
     edge.t1 <- which(subnet.Vis$edges$kind == "Activation")
     edge.t2 <- which(subnet.Vis$edges$kind == "Interaction")
     edge.t3 <- which(subnet.Vis$edges$kind == "Inhibition")
@@ -477,12 +575,26 @@ shinyServer (function(input, output, session) {
     #                                "/tr/tr1.6.png", "/cytokine/cytokine1.6.png", "/transporter/transporter1.6.png",
     #                                "/ligand/ligand1.6.png", "/other/other1.6.png"))
     # 
-    visNetwork(subnet.Vis$nodes, subnet.Vis$edges, height = "100%", width = "100%") %>%
+    
+    global.data$netstart <- FALSE
+    visNetwork(subnet.Vis$nodes, subnet.Vis$edges, height = "1500px", width = "100%") %>%
       visNodes(shapeProperties = list(useBorderWithImage = FALSE)) %>%
       visOptions(manipulation = TRUE, highlightNearest = TRUE)
+      
       # visLegend(addEdges = ledges,
       #           addNodes = lnodes,
       #           position = "right", useGroups = FALSE, ncol = 2)
+  })
+  
+  output$nettour <- renderVisNetwork({
+    if(global.data$tour) {
+      global.data$netstart <- FALSE
+      visNetwork(global.data$nets$nodes, global.data$nets$edges, height = "100%", width = "100%") %>%
+        visNodes(shapeProperties = list(useBorderWithImage = FALSE)) %>%
+        visOptions(manipulation = TRUE, highlightNearest = TRUE)
+
+    }
+    
   })
   
   output$zaman.sub <- renderVisNetwork({
@@ -559,11 +671,44 @@ shinyServer (function(input, output, session) {
   })
   output$extraLegend <- renderImage({
     # Return a list containing the filename
-    list(src = "./www/leg1.png",
+    list(src = "./www/legend.png",
          contentType = 'image/png',
-         width = 1068/3.5,
-         height = 1216/3.5,
+         width = 7977/7.95,
+         height = 449/7.95,
          alt = "This is alternate text")
   }, deleteFile = F)
 }
 )
+
+addimg <- function(type, id.mut, id.pos, id.neg, img.pos, img.neg, subnet.Vis) {
+    # type
+    type.node <- which(subnet.Vis$nodes$type == type)
+    type.mut <- which(type.node %in% id.mut)
+    if(!is.null(id.pos)) {
+        type.pos <- which(type.node %in% id.pos)
+        # pos mut
+        pos.m1 <- intersect(type.pos, type.mut)
+        if(length(pos.m1)!=0) subnet.Vis$nodes$image[type.node[pos.m1]] <-
+        paste(img.pos, subnet.Vis$nodes$expclass[type.node[pos.m1]], ".mut.png", sep = "")
+        # pos non-mut
+        pos.m2 <- setdiff(type.pos, type.mut)
+        if(length(pos.m2)!=0) subnet.Vis$nodes$image[type.node[pos.m2]] <-
+        paste(img.pos, subnet.Vis$nodes$expclass[type.node[pos.m2]],".png", sep = "")
+        
+    }
+    if(!is.null(id.neg)) {
+        type.neg <- which(type.node %in% id.neg)
+        
+        # neg mut
+        neg.m1 <- intersect(type.neg, type.mut)
+        if(length(neg.m1)!=0) subnet.Vis$nodes$image[type.node[neg.m1]] <-
+        paste(img.neg, subnet.Vis$nodes$expclass[type.node[neg.m1]],".mut.png", sep = "")
+        # neg non-mut
+        neg.m2 <- setdiff(type.neg, type.mut)
+        if(length(neg.m2)!=0) subnet.Vis$nodes$image[type.node[neg.m2]] <-
+        paste(img.neg, subnet.Vis$nodes$expclass[type.node[neg.m2]],".png", sep = "")
+        
+        
+    }
+    return(subnet.Vis)
+}

@@ -1,3 +1,4 @@
+.libPaths("/home/shiny/libs")
 library(openxlsx)
 library(visNetwork)
 library(igraph)
@@ -5,8 +6,6 @@ library(shiny)
 library(shinydashboard)
 library(shinyBS)
 library(shinyjs)
-#load("Zaman.27.12.rda")
-source("NetworkPipeline.R")
 source("./Rsource/SwitchButton.R")
 
 shinyUI(dashboardPage(
@@ -31,19 +30,24 @@ shinyUI(dashboardPage(
       tags$script(src = "feedback.js"), #also to top button
       tags$script(src = "tour.js")
     ),
+    
+    downloadButton(outputId = "loadExData_small", label = "example data", class = "butEx"),
     div(
       id = "filetype",
-      switchButton(inputId = "separate", label = "Separate input files", value = TRUE)
+      switchButton(inputId = "separate", label = "Separate input files", value = FALSE)
     ),
     #,
     div(id = "singleinput",
-        conditionalPanel(
-          condition = " input.separate != true",
-          
-          fileInput('dataAll', 'Upload single file in xlsx format', accept = c(".xlsx"))
-          
-          
+        tags$form(id = "testing",
+          conditionalPanel(
+            condition = " input.separate != true",
+            
+            fileInput('dataAll', 'Upload a single file in xlsx format', accept = c(".xlsx"))
+            
+            
+          )
         )
+        
     ),
     conditionalPanel(
       condition = " input.separate == true",
@@ -54,15 +58,19 @@ shinyUI(dashboardPage(
     ),
     
     
-    #uiOutput("btnNet")
+    div(id = "net", actionButton("Nets", "Construct Patient Network")),
     
-    div(id = "net", actionButton("nets", "Construct Patient Network"))
+    hr(),
+    div(id = "save", valueBox(downloadButton("Save", "Save"), 
+                              "Save results", icon = icon("floppy-save", lib = "glyphicon"),
+                              width = 13, color = "red"))
   ),
   dashboardBody(
+    useShinyjs(),
     
     div(
       br(),br(),br(),br(),br(),br(),br(),br(),br(),br(),br(),
-      fluidRow(column(offset = 3, width = 6, 
+      fluidRow(column(offset = 3, width = 6,
                       div(
                         HTML('<div class="primary_header"><h1>Welcome to PatientNet</h1>
                              <h2>a shiny web application for visualizing patient-specific cancer vulnerability networks</h2></div>'
@@ -72,7 +80,10 @@ shinyUI(dashboardPage(
                              Start the tour
                              </button>'), id = "startour")
                         )), id = "wraptour"),
-    uiOutput("showInputData")
+    uiOutput("showInputData"),
+    div(id = "networks", uiOutput("showNetwork"))
+    
+    
   )
   
 ))
