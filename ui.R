@@ -1,4 +1,4 @@
-#.libPaths("/home/shiny/libs")
+.libPaths("/home/shiny/libs")
 library(openxlsx)
 library(visNetwork)
 library(igraph)
@@ -6,6 +6,8 @@ library(shiny)
 library(shinydashboard)
 library(shinyBS)
 library(shinyjs)
+#load("Zaman.27.12.rda")
+# source("NetworkPipeline.R")
 source("./Rsource/SwitchButton.R")
 
 shinyUI(dashboardPage(
@@ -59,6 +61,7 @@ shinyUI(dashboardPage(
     
     
     div(id = "net", actionButton("Nets", "Construct Patient Network")),
+    div(id='simplify', selectInput("Simplify", "Simplify Network:", choices=c("Select max path length"))),
     
     hr(),
     div(id = "save", valueBox(downloadButton("Save", "Save"), 

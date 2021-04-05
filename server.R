@@ -1,10 +1,8 @@
-#.libPaths("/home/shiny/libs")
+.libPaths("/home/shiny/libs")
 library(openxlsx)
 library(visNetwork)
 library(igraph)
-#library(biomaRt)
 library(shinyjs)
-#source("NetworkPipeline.R")
 
 shinyServer (function(input, output, session) {
     
@@ -29,7 +27,10 @@ shinyServer (function(input, output, session) {
                                 tour = FALSE,
                                 nets = NULL,
                                 netstart = FALSE,
-                                noticeid= NULL)
+                                noticeid= NULL,
+                                maxlength = 0,
+                                showSimplify = FALSE,
+                                netobject = NULL)
   
   # use reactive expression for saving the uploaded file
   uploadDT <- reactive({
@@ -143,6 +144,17 @@ shinyServer (function(input, output, session) {
   )
   
   observe({
+    #if(global.data$maxlength<1) shinyjs::disable("Simplify")
+    if(!global.data$showSimplify) shinyjs::disable("Simplify")
+    else {
+      shinyjs::enable("Simplify")
+      updateSelectInput(session, "Simplify",
+                        choices = c("Select max path length", 2:global.data$maxlength)
+      )
+      }
+  })
+  
+  observe({
       if(global.data$netstart){
           global.data$noticeid<-showNotification(paste("Patient specific network construction in progress..."), duration = NULL)
       }else {
@@ -179,10 +191,6 @@ shinyServer (function(input, output, session) {
     
   })
   
-  #observeEvent(input$unmatchbtn, {
-    
-  #})
-  
   output$loadExData_small <- downloadHandler(
     filename = function(){ paste0("test.xlsx") },
     content = function(file){ file.copy("test.xlsx", file)},
@@ -190,9 +198,25 @@ shinyServer (function(input, output, session) {
   )
   
   output$Save <- downloadHandler(
-    filename = function(){ paste0("test.html") },
-    content = function(file){ file.copy("test.html", file)},
-    contentType = NULL
+      filename = function(){ paste0("results.tar.gz") },
+      content = function(file){ 
+        tmp <- global.data$netobject
+        tmp$nodes$image <- paste("./www",tmp$nodes$image, sep = "")
+        
+        visNetwork(tmp$nodes, tmp$edges, height = "1500px", width = "100%") %>%
+          visSave(file = "results.html", selfcontained = FALSE)
+        if(!dir.exists("results")) {
+          dir.create("results")
+          file.copy("./www", "./results", recursive = TRUE)
+          file.copy("./results.html", "./results")
+          file.copy("./results_files", "./results", recursive = TRUE)
+        }else{
+          file.copy("./results.html", "./results", overwrite = TRUE)
+        }
+        
+        tar("results.tar.gz", "./results")
+        file.copy("results.tar.gz", file)},
+      contentType = NULL
   )
   
   
@@ -400,11 +424,20 @@ shinyServer (function(input, output, session) {
     e.lists <- c()
     for(i in 1:length(targets)) {
       for(j in 1:length(muts)) {
-        spaths <- get.shortest.paths(Zaman,from = which(V(Zaman)$Symbol == targets[i]),
-                                     to = which(V(Zaman)$Symbol == muts[j]), output = "both", mode = "all")
-        if(length(spaths$vpath)!=0)
-          #dis[i, j] <- length(as.numeric(spaths$vpath[[1]]))
-          e.lists <- c(e.lists, as.numeric(spaths$epath[[1]]))
+        if (length(which(V(Zaman)$Symbol == targets[i]))>0&(length(which(V(Zaman)$Symbol == muts[j])))>0){
+          spaths <- get.shortest.paths(Zaman,from = which(V(Zaman)$Symbol == targets[i]),
+                                       to = which(V(Zaman)$Symbol == muts[j]), output = "both", mode = "all")
+          
+          if((length(spaths$vpath)>0)){
+            if(length(spaths$epath[[1]])>global.data$maxlength) global.data$maxlength <- length(spaths$epath[[1]])
+            if(input$Simplify=="Select max path length"){
+              e.lists <- c(e.lists, as.numeric(spaths$epath[[1]]))
+            } else if(length(spaths$epath[[1]]) <= input$Simplify){
+              e.lists <- c(e.lists, as.numeric(spaths$epath[[1]]))
+            }
+            
+          }
+        }
       }
     }
     
@@ -434,7 +467,7 @@ shinyServer (function(input, output, session) {
     V(subnet)$expclass <- NA
     
     # only positive gene expression
-    if(min.exp > 0) {
+    if(min.exp >= 0) {
         # positive gene expression
         id.pos <- which(V(subnet)$exp >= 0)
         breaks.tmp <- c(0, max.exp/6, max.exp/3,max.exp/2,
@@ -444,37 +477,30 @@ shinyServer (function(input, output, session) {
         include.lowest = TRUE))
         # no negative gene expression
         id.neg <- NULL
+    } else if (max.exp <= 0) { # only negative gene expression
+      id.neg <- which(V(subnet)$exp < 0)
+      breaks.tmp <- c(0, min.exp/6, min.exp/3, min.exp/2,
+                      min.exp/6*4, min.exp/6*5, min.exp)
+      V(subnet)$expclass[id.neg] <- as.numeric(cut(V(subnet)$exp[id.neg],
+                                                   breaks = breaks.tmp,
+                                                   include.lowest = TRUE))
+      # no positive gene expression
+      id.pos <- NULL
+    } else {
+      # positive gene expression
+      id.pos <- which(V(subnet)$exp >= 0)
+      breaks.tmp <- c(0, max.exp/6, max.exp/3,max.exp/2,
+                      max.exp/6*4, max.exp/6*5, max.exp)
+      V(subnet)$expclass[id.pos] <- as.numeric(cut(V(subnet)$exp[id.pos],
+                                                   breaks = breaks.tmp,
+                                                   include.lowest = TRUE))
+      id.neg <- which(V(subnet)$exp < 0)
+      breaks.tmp <- c(0, min.exp/6, min.exp/3, min.exp/2,
+                      min.exp/6*4, min.exp/6*5, min.exp)
+      V(subnet)$expclass[id.neg] <- as.numeric(cut(V(subnet)$exp[id.neg],
+                                                   breaks = breaks.tmp,
+                                                   include.lowest = TRUE))
     }
-    
-    # only negative gene expression
-    if(max.exp < 0){
-        id.neg <- which(V(subnet)$exp < 0)
-        breaks.tmp <- c(0, min.exp/6, min.exp/3, min.exp/2,
-        min.exp/6*4, min.exp/6*5, min.exp)
-        V(subnet)$expclass[id.neg] <- as.numeric(cut(V(subnet)$exp[id.neg],
-        breaks = breaks.tmp,
-        include.lowest = TRUE))
-        # no positive gene expression
-        id.pos <- NULL
-    }
-    
-    if(max.exp > 0 & min.exp < 0){
-        # positive gene expression
-        id.pos <- which(V(subnet)$exp >= 0)
-        breaks.tmp <- c(0, max.exp/6, max.exp/3,max.exp/2,
-        max.exp/6*4, max.exp/6*5, max.exp)
-        V(subnet)$expclass[id.pos] <- as.numeric(cut(V(subnet)$exp[id.pos],
-        breaks = breaks.tmp,
-        include.lowest = TRUE))
-        id.neg <- which(V(subnet)$exp < 0)
-        breaks.tmp <- c(0, min.exp/6, min.exp/3, min.exp/2,
-        min.exp/6*4, min.exp/6*5, min.exp)
-        V(subnet)$expclass[id.neg] <- as.numeric(cut(V(subnet)$exp[id.neg],
-        breaks = breaks.tmp,
-        include.lowest = TRUE))
-        
-    }
-    
     
     subnet.Vis <- toVisNetworkData(subnet)
     
@@ -493,7 +519,10 @@ shinyServer (function(input, output, session) {
     # type "other"
     subnet.Vis <- addimg("other", id.mut, id.pos, id.neg, "/other/other1.",
     "/other/other2.", subnet.Vis)
-    
+    subnet.Vis <- addimg("phosphatase", id.mut, id.pos, id.neg, "/other/other1.",
+                         "/other/other2.", subnet.Vis)
+    subnet.Vis <- addimg("G-protein coupled receptor", id.mut, id.pos, id.neg, "/other/other1.",
+                         "/other/other2.", subnet.Vis)
     # type "cytokine"
     subnet.Vis <- addimg("cytokine", id.mut, id.pos, id.neg, "/cytokine/cytokine1.",
     "/cytokine/cytokine2.", subnet.Vis)
@@ -511,6 +540,12 @@ shinyServer (function(input, output, session) {
     # type "transcription regulator"
     subnet.Vis <- addimg("transcription regulator", id.mut, id.pos, id.neg, "/tr/tr1.",
     "/tr/tr2.", subnet.Vis)
+    subnet.Vis <- addimg("translation regulator", id.mut, id.pos, id.neg, "/tr/tr1.",
+                         "/tr/tr2.", subnet.Vis)
+    
+    # type "ion channel"
+    subnet.Vis <- addimg("ion channel", id.mut, id.pos, id.neg, "/ionchannel/ic1.",
+                         "/ionchannel/ic2.", subnet.Vis)
     
     # type "transporter"
     subnet.Vis <- addimg("transporter", id.mut, id.pos, id.neg, "/transporter/transporter1.",
@@ -527,6 +562,12 @@ shinyServer (function(input, output, session) {
     # type "Transmembrane receptor"
     subnet.Vis <- addimg("transmembrane receptor", id.mut, id.pos, id.neg, "/mr/mr1.",
     "/mr/mr2.", subnet.Vis)
+    # type "peptidase"
+    subnet.Vis <- addimg("peptidase", id.mut, id.pos, id.neg, "/peptidase/peptidase1.",
+                         "/peptidase/peptidase2.", subnet.Vis)
+    # type "microRNA"
+    subnet.Vis <- addimg("microRNA", id.mut, id.pos, id.neg, "/mircorna/microrna1.",
+                         "/mircorna/microrna2.", subnet.Vis)
     save(subnet.Vis, file="subnet.Vis.rda")
     edge.t1 <- which(subnet.Vis$edges$kind == "Activation")
     edge.t2 <- which(subnet.Vis$edges$kind == "Interaction")
@@ -577,6 +618,8 @@ shinyServer (function(input, output, session) {
     # 
     
     global.data$netstart <- FALSE
+    global.data$netobject <- subnet.Vis
+    global.data$showSimplify <- TRUE
     visNetwork(subnet.Vis$nodes, subnet.Vis$edges, height = "1500px", width = "100%") %>%
       visNodes(shapeProperties = list(useBorderWithImage = FALSE)) %>%
       visOptions(manipulation = TRUE, highlightNearest = TRUE)

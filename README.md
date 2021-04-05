@@ -25,7 +25,7 @@ Mutation file: each row has both the gene name (HGNC symbol) and normalized expr
 
 
 ## Support
-If you have any problems in using ComboPred, please contace **Liye He** (liye.he@helsinki.fi)
+If you have any problems in using PatientNet, please contace **Liye He** (liye.he@helsinki.fi)
 
 ## Copyright & License
 
